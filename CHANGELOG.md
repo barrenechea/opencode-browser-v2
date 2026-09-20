@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-09-20
+
+### Changed
+- **BREAKING:** Renamed the package to `opencode-browser-v2`, published from [barrenechea/opencode-browser-v2](https://github.com/barrenechea/opencode-browser-v2) as a fork of [michaljach/opencode-browser](https://github.com/michaljach/opencode-browser). The CLI is now `npx opencode-browser-v2 init`. Stay on the upstream `opencode-browser` package for OpenCode v1.
+- **BREAKING:** Ported the plugin to the OpenCode v2 plugin API. The package now depends on `@opencode/plugin` (v2) instead of `@opencode-ai/plugin`, and default-exports a `Plugin.define({ id: "opencode-browser-v2", setup })` definition instead of a plugin function returning a hook map. V1 OpenCode will not run this version.
+- Replaced `experimental.chat.system.transform` and `tool.definition` with `ctx.session.hook("context", ...)`, which appends the browser speed guidance to the last system part and annotates `browsermcp_*` tool descriptions in one pass. The same handler is registered on `"generate"` so auxiliary requests get it too.
+- Replaced `tool.execute.after` with `ctx.tool.hook("execute.after", ...)`. The v2 event splits success from failure, so connection failures are now detected on both a thrown `Tool.Error` and an error-shaped successful result, and hints are appended to structured `content` parts rather than to a single output string.
+- Replaced `experimental.session.compacting` with `ctx.session.hook("compaction", ...)`, pushing the browser context as a system part.
+- Replaced the `event` hook with `ctx.event.subscribe()`. Session IDs now come from `event.data.sessionID` rather than `event.sessionID`.
+- `setup` returns a cleanup function that aborts the event subscription and clears per-session state.
+
+### Changed (configuration)
+- `opencode-browser-v2 init` now writes v2 configuration and migrates a v1 config in place: `plugin` → `plugins` (including `[package, options]` tuples → `{ package, options }`), `mcp.<name>` → `mcp.servers.<name>`, `agent` → `agents`, and a server's `enabled` flag → v2's `disabled` flag. It also swaps an existing `opencode-browser` plugin entry for `opencode-browser-v2`, preserving any options. Re-running it on an already-migrated config is a no-op.
+- `opencode.json.example` and the docs use the v2 config shape. Per-agent tool allow/deny maps were removed in v2 in favour of an agent `permissions` policy list.
+
+### Added
+- `npm run typecheck` script and `@opencode/plugin` / `typescript` dev dependencies so the plugin type-checks against the v2 API. Typechecking uses TypeScript 7 (the native port); `tsconfig.json` now sets `rootDir` explicitly, which TypeScript 6 and 7 require whenever `outDir` is set. The config still type-checks cleanly under TypeScript 5.8.
+
 ## [1.2.3] - 2026-04-29
 
 ### Fixed
@@ -84,6 +102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tool execution logging
 - Event handling
 
+[2.0.0]: https://github.com/barrenechea/opencode-browser-v2/releases/tag/v2.0.0
 [1.2.3]: https://github.com/michaljach/opencode-browser/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/michaljach/opencode-browser/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/michaljach/opencode-browser/compare/v1.2.0...v1.2.1

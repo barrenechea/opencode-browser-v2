@@ -1,6 +1,8 @@
-# OpenCode Browser MCP Plugin
+# OpenCode Browser MCP Plugin (v2)
 
 An OpenCode plugin that integrates [Browser MCP](https://browsermcp.io) to enable browser automation capabilities within OpenCode. This plugin allows the AI to control a browser, navigate websites, fill forms, click elements, and perform other browser automation tasks.
+
+Published on npm as [`opencode-browser-v2`](https://www.npmjs.com/package/opencode-browser-v2). It is a fork of [michaljach/opencode-browser](https://github.com/michaljach/opencode-browser), ported to the **OpenCode v2 plugin API**. If you are still on OpenCode v1, use the original `opencode-browser` package instead.
 
 ## Demo
 
@@ -37,15 +39,16 @@ Before using this plugin, you need:
 Fastest path:
 
 ```bash
-npx opencode-browser init
+npx opencode-browser-v2 init
 ```
 
-This creates or updates `./opencode.json` with the required `plugin` and `mcp.browsermcp` entries while preserving any unrelated config you already have.
+This creates or updates `./opencode.json` with the required `plugins` and `mcp.servers.browsermcp` entries while preserving any unrelated config you already have.
+It also migrates a v1 config in place: `plugin` becomes `plugins`, servers move from `mcp.<name>` to `mcp.servers.<name>`, `agent` becomes `agents`, and the server's `enabled` flag becomes v2's `disabled` flag.
 
 For a global setup instead of a project-local one:
 
 ```bash
-npx opencode-browser init --global
+npx opencode-browser-v2 init --global
 ```
 
 Create or update your `opencode.json` configuration file. You can create this file in one of two locations:
@@ -60,19 +63,20 @@ Add this configuration to your `opencode.json`:
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-browser"],
+  "plugins": ["opencode-browser-v2"],
   "mcp": {
-    "browsermcp": {
-      "type": "local",
-      "command": ["npx", "-y", "@browsermcp/mcp@0.1.3"],
-      "enabled": true
+    "servers": {
+      "browsermcp": {
+        "type": "local",
+        "command": ["npx", "-y", "@browsermcp/mcp@0.1.3"]
+      }
     }
   }
 }
 ```
 
 This configuration does two things:
-1. **Installs the plugin** - OpenCode automatically downloads `opencode-browser` from npm
+1. **Installs the plugin** - OpenCode automatically downloads `opencode-browser-v2` from npm
 2. **Configures Browser MCP** - Sets up the MCP server that actually controls the browser
 
 That's it! No manual file copying required. OpenCode handles everything automatically.
@@ -82,7 +86,7 @@ The generated command pins the Browser MCP package version to avoid the extra `@
 If you prefer to preview the generated config without writing it yet:
 
 ```bash
-npx opencode-browser init --print
+npx opencode-browser-v2 init --print
 ```
 
 #### Alternative: Install Locally (for development/testing)
@@ -113,41 +117,45 @@ The minimal configuration requires only the MCP server setup:
 {
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
-    "browsermcp": {
-      "type": "local",
-      "command": ["npx", "-y", "@browsermcp/mcp@0.1.3"],
-      "enabled": true
-    }
-  }
-}
-```
-
-### Advanced Configuration
-
-For more control, you can disable Browser MCP tools globally and enable them per agent:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "browsermcp": {
-      "type": "local",
-      "command": ["npx", "-y", "@browsermcp/mcp@0.1.3"],
-      "enabled": true
-    }
-  },
-  "tools": {
-    "browsermcp_*": false
-  },
-  "agent": {
-    "browser-agent": {
-      "tools": {
-        "browsermcp_*": true
+    "servers": {
+      "browsermcp": {
+        "type": "local",
+        "command": ["npx", "-y", "@browsermcp/mcp@0.1.3"]
       }
     }
   }
 }
 ```
+
+MCP servers are enabled by default in v2. Set `"disabled": true` on a server to turn it off.
+
+### Advanced Configuration
+
+Define a dedicated agent for browser work under the v2 `agents` key:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "browsermcp": {
+        "type": "local",
+        "command": ["npx", "-y", "@browsermcp/mcp@0.1.3"]
+      }
+    }
+  },
+  "agents": {
+    "browser-agent": {
+      "description": "Agent specialized in browser automation tasks",
+      "mode": "primary"
+    }
+  }
+}
+```
+
+The v1 `tools` allow/deny maps (both the global one and the per-agent one) were replaced in v2 by the
+`permissions` policy list on an agent. See the OpenCode agent configuration docs for the action and
+resource names to use when scoping Browser MCP tools to a single agent.
 
 ### Performance Behavior
 
@@ -166,12 +174,13 @@ If you need to pass environment variables to the Browser MCP server:
 {
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
-    "browsermcp": {
-      "type": "local",
-      "command": ["npx", "-y", "@browsermcp/mcp@0.1.3"],
-      "enabled": true,
-      "environment": {
-        "BROWSER_MCP_DEBUG": "true"
+    "servers": {
+      "browsermcp": {
+        "type": "local",
+        "command": ["npx", "-y", "@browsermcp/mcp@0.1.3"],
+        "environment": {
+          "BROWSER_MCP_DEBUG": "true"
+        }
       }
     }
   }
@@ -320,18 +329,29 @@ opencode --verbose
 If you want to modify the plugin:
 
 1. Clone the repository
-2. Make your changes to `src/index.ts`
-3. Test locally by copying to your OpenCode plugin directory
-4. Submit a PR if you'd like to contribute!
+2. Run `npm install`
+3. Make your changes to `src/index.ts`
+4. Run `npm run typecheck`
+5. Test locally by copying to your OpenCode plugin directory
+6. Submit a PR if you'd like to contribute!
 
 ### Plugin Architecture
 
-The plugin uses OpenCode's plugin system hooks:
+The plugin is an OpenCode **v2** plugin: it default-exports a `Plugin.define({ id, setup })` definition
+and registers everything through the setup context.
 
-- `experimental.chat.system.transform`: Inject speed-oriented browser guidance
-- `tool.definition`: Add performance hints to Browser MCP tools
-- `tool.execute.after`: Post-process browser tool results
-- `experimental.session.compacting`: Preserve browser context
+| Registration | Purpose |
+| --- | --- |
+| `ctx.session.hook("context", ...)` | Inject speed-oriented browser guidance and append performance hints to Browser MCP tool descriptions |
+| `ctx.session.hook("generate", ...)` | Apply the same guidance to auxiliary generate requests |
+| `ctx.tool.hook("execute.after", ...)` | Post-process browser tool results and annotate connection failures |
+| `ctx.session.hook("compaction", ...)` | Preserve browser context across compaction |
+| `ctx.event.subscribe()` | Drop per-session state on `session.deleted` |
+
+The cleanup function returned by `setup` aborts the event subscription and clears session state; hook
+registrations are disposed by OpenCode automatically.
+
+Requires `@opencode/plugin` v2. For OpenCode v1, use the original [`opencode-browser`](https://www.npmjs.com/package/opencode-browser) package, which this project is a fork of.
 
 ## Contributing
 
@@ -359,7 +379,7 @@ For issues and questions:
 
 - Browser MCP issues: [Browser MCP GitHub](https://github.com/browsermcp/browser-mcp)
 - OpenCode issues: [OpenCode GitHub](https://github.com/anomalyco/opencode)
-- Plugin issues: Open an issue in this repository
+- Plugin issues: [Open an issue](https://github.com/barrenechea/opencode-browser-v2/issues) in this repository
 
 ## Changelog
 

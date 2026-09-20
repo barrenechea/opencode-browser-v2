@@ -1,11 +1,14 @@
 {
-  "name": "opencode-browser",
-  "version": "1.2.3",
+  "name": "opencode-browser-v2",
+  "version": "2.0.0",
   "description": "OpenCode plugin that integrates Browser MCP for browser automation",
   "type": "module",
   "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
   "bin": {
-    "opencode-browser": "bin/opencode-browser.js"
+    "opencode-browser-v2": "bin/opencode-browser.js"
   },
   "keywords": [
     "opencode",
@@ -18,20 +21,21 @@
     "automation",
     "browser-control",
     "web-automation",
-    "puppeteer-alternative"
+    "puppeteer-alternative",
+    "opencode-v2"
   ],
-  "author": "",
+  "author": "barrenechea",
   "license": "MIT",
   "peerDependencies": {
-    "@opencode-ai/plugin": "*"
+    "@opencode/plugin": ">=2.0.0"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/michaljach/opencode-browser.git"
+    "url": "git+https://github.com/barrenechea/opencode-browser-v2.git"
   },
-  "homepage": "https://github.com/michaljach/opencode-browser#readme",
+  "homepage": "https://github.com/barrenechea/opencode-browser-v2#readme",
   "bugs": {
-    "url": "https://github.com/michaljach/opencode-browser/issues"
+    "url": "https://github.com/barrenechea/opencode-browser-v2/issues"
   },
   "files": [
     "bin/",
@@ -41,5 +45,10 @@
   ],
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@opencode/plugin": "^2.0.11",
+    "@types/node": "^26.6.2",
+    "typescript": "^7.0.2"
   }
 }

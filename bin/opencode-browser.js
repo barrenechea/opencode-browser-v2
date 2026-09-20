@@ -5,13 +5,14 @@ import { homedir } from "node:os"
 import { dirname, resolve } from "node:path"
 
 const schemaUrl = "https://opencode.ai/config.json"
-const pluginName = "opencode-browser"
+const pluginName = "opencode-browser-v2"
+const legacyPluginName = "opencode-browser"
+const serverName = "browsermcp"
 const browserMcpVersion = "0.1.3"
 const legacyBrowserMcpCommand = ["npx", "-y", "@browsermcp/mcp@latest"]
 const defaultBrowserMcpConfig = {
   type: "local",
   command: ["npx", "-y", `@browsermcp/mcp@${browserMcpVersion}`],
-  enabled: true,
 }
 
 function isSameCommand(actual, expected) {
@@ -21,12 +22,12 @@ function isSameCommand(actual, expected) {
 }
 
 function printUsage() {
-  console.log(`Usage: opencode-browser [init] [--project|--global|--path <file>] [--print]\n\n` +
+  console.log(`Usage: opencode-browser-v2 [init] [--project|--global|--path <file>] [--print]\n\n` +
     `Examples:\n` +
-    `  npx opencode-browser init\n` +
-    `  npx opencode-browser init --global\n` +
-    `  npx opencode-browser init --path ./opencode.json\n` +
-    `  npx opencode-browser init --print`)
+    `  npx opencode-browser-v2 init\n` +
+    `  npx opencode-browser-v2 init --global\n` +
+    `  npx opencode-browser-v2 init --path ./opencode.json\n` +
+    `  npx opencode-browser-v2 init --print`)
 }
 
 function parseArgs(argv) {
@@ -103,22 +104,6 @@ function loadConfig(targetPath) {
   }
 }
 
-function normalizePlugins(pluginField) {
-  if (pluginField === undefined) {
-    return []
-  }
-
-  if (typeof pluginField === "string") {
-    return [pluginField]
-  }
-
-  if (Array.isArray(pluginField) && pluginField.every((value) => typeof value === "string")) {
-    return [...pluginField]
-  }
-
-  throw new Error('The "plugin" field must be a string or an array of strings')
-}
-
 function ensureObject(value, fieldName) {
   if (value === undefined) {
     return {}
@@ -131,24 +116,123 @@ function ensureObject(value, fieldName) {
   return { ...value }
 }
 
-function mergeConfig(config) {
-  const nextConfig = { ...config }
-  const changes = []
-
-  if (!nextConfig.$schema) {
-    nextConfig.$schema = schemaUrl
-    changes.push("added OpenCode schema")
+/**
+ * V2 plugin entries are either a package name or `{ package, options }`. V1 also allowed a
+ * `[package, options]` tuple, so tuples are folded into the object form on the way through.
+ */
+function normalizePluginEntry(entry, fieldName) {
+  if (typeof entry === "string") {
+    return { entry, package: entry, migrated: false }
   }
 
-  const plugins = normalizePlugins(nextConfig.plugin)
-  if (!plugins.includes(pluginName)) {
-    plugins.push(pluginName)
-    changes.push("enabled opencode-browser plugin")
-  }
-  nextConfig.plugin = plugins
+  if (Array.isArray(entry)) {
+    const [packageName, packageOptions] = entry
 
-  const mcp = ensureObject(nextConfig.mcp, "mcp")
-  const browsermcp = ensureObject(mcp.browsermcp, "mcp.browsermcp")
+    if (typeof packageName !== "string") {
+      throw new Error(`Every "${fieldName}" tuple must start with a package name`)
+    }
+
+    return {
+      entry: packageOptions === undefined
+        ? packageName
+        : { package: packageName, options: packageOptions },
+      package: packageName,
+      migrated: true,
+    }
+  }
+
+  if (entry && typeof entry === "object" && typeof entry.package === "string") {
+    return { entry: { ...entry }, package: entry.package, migrated: false }
+  }
+
+  throw new Error(`Every "${fieldName}" entry must be a package name, a { package, options } object, or a [package, options] tuple`)
+}
+
+function normalizePlugins(pluginField, fieldName) {
+  if (pluginField === undefined) {
+    return { entries: [], migrated: false }
+  }
+
+  const rawEntries = Array.isArray(pluginField) ? pluginField : [pluginField]
+  const entries = []
+  let migrated = false
+
+  for (const rawEntry of rawEntries) {
+    const normalized = normalizePluginEntry(rawEntry, fieldName)
+    migrated = migrated || normalized.migrated
+
+    if (entries.some((existing) => existing.package === normalized.package)) {
+      continue
+    }
+
+    entries.push(normalized)
+  }
+
+  return { entries, migrated }
+}
+
+function mergePlugins(config, changes) {
+  const fromV2 = normalizePlugins(config.plugins, "plugins")
+  const fromV1 = normalizePlugins(config.plugin, "plugin")
+
+  const entries = [...fromV2.entries]
+
+  for (const candidate of fromV1.entries) {
+    if (entries.some((existing) => existing.package === candidate.package)) {
+      continue
+    }
+
+    entries.push(candidate)
+  }
+
+  if (config.plugin !== undefined) {
+    delete config.plugin
+    changes.push('migrated "plugin" to the v2 "plugins" field')
+  } else if (fromV2.migrated) {
+    changes.push('normalized "plugins" entries to the v2 object form')
+  }
+
+  // The v1 package does not run under OpenCode v2, so point an existing entry at this package.
+  const legacy = entries.find((existing) => existing.package === legacyPluginName)
+
+  if (legacy && !entries.some((existing) => existing.package === pluginName)) {
+    legacy.package = pluginName
+    legacy.entry = typeof legacy.entry === "string"
+      ? pluginName
+      : { ...legacy.entry, package: pluginName }
+    changes.push(`replaced the v1 "${legacyPluginName}" plugin with "${pluginName}"`)
+  } else if (legacy) {
+    entries.splice(entries.indexOf(legacy), 1)
+    changes.push(`removed the superseded v1 "${legacyPluginName}" plugin`)
+  }
+
+  if (!entries.some((existing) => existing.package === pluginName)) {
+    entries.push({ entry: pluginName, package: pluginName })
+    changes.push(`enabled ${pluginName} plugin`)
+  }
+
+  config.plugins = entries.map((existing) => existing.entry)
+}
+
+/**
+ * V2 nests servers under `mcp.servers`; V1 put them directly on `mcp`. Anything on `mcp` other
+ * than the two v2 keys is therefore a v1 server entry that needs relocating.
+ */
+function mergeMcp(config, changes) {
+  const mcp = ensureObject(config.mcp, "mcp")
+  const servers = ensureObject(mcp.servers, "mcp.servers")
+  const legacyNames = Object.keys(mcp).filter((key) => key !== "servers" && key !== "timeout")
+
+  for (const name of legacyNames) {
+    servers[name] = { ...servers[name], ...ensureObject(mcp[name], `mcp.${name}`) }
+    delete mcp[name]
+  }
+
+  if (legacyNames.length > 0) {
+    changes.push(`moved ${legacyNames.length} MCP server${legacyNames.length === 1 ? "" : "s"} under "mcp.servers"`)
+  }
+
+  const browsermcp = ensureObject(servers[serverName], `mcp.servers.${serverName}`)
 
   if (browsermcp.type === undefined) {
     browsermcp.type = defaultBrowserMcpConfig.type
@@ -163,13 +247,56 @@ function mergeConfig(config) {
     changes.push("pinned Browser MCP command version")
   }
 
-  if (browsermcp.enabled === undefined) {
-    browsermcp.enabled = defaultBrowserMcpConfig.enabled
-    changes.push("enabled Browser MCP server")
+  // V2 replaced the `enabled` flag with `disabled`; servers are enabled by default.
+  if (browsermcp.enabled !== undefined) {
+    const wasEnabled = browsermcp.enabled !== false
+    delete browsermcp.enabled
+
+    if (wasEnabled) {
+      delete browsermcp.disabled
+    } else {
+      browsermcp.disabled = true
+    }
+
+    changes.push('replaced the v1 "enabled" flag with the v2 "disabled" flag')
   }
 
-  mcp.browsermcp = browsermcp
-  nextConfig.mcp = mcp
+  servers[serverName] = browsermcp
+  mcp.servers = servers
+  config.mcp = mcp
+}
+
+function mergeAgents(config, changes) {
+  if (config.agent === undefined) {
+    return
+  }
+
+  const legacyAgents = ensureObject(config.agent, "agent")
+  const agents = ensureObject(config.agents, "agents")
+
+  for (const [name, definition] of Object.entries(legacyAgents)) {
+    if (agents[name] === undefined) {
+      agents[name] = definition
+    }
+  }
+
+  delete config.agent
+  config.agents = agents
+  changes.push('migrated "agent" to the v2 "agents" field')
+}
+
+function mergeConfig(config) {
+  const nextConfig = { ...config }
+  const changes = []
+
+  if (!nextConfig.$schema) {
+    nextConfig.$schema = schemaUrl
+    changes.push("added OpenCode schema")
+  }
+
+  mergePlugins(nextConfig, changes)
+  mergeMcp(nextConfig, changes)
+  mergeAgents(nextConfig, changes)
 
   return { nextConfig, changes }
 }
@@ -226,7 +353,7 @@ async function main() {
       console.log(`- ${change}`)
     }
   } catch (error) {
-    console.error(`[opencode-browser] ${error.message}`)
+    console.error(`[opencode-browser-v2] ${error.message}`)
     printUsage()
     process.exitCode = 1
   }

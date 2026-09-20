@@ -20,7 +20,7 @@ Get up and running with the OpenCode Browser MCP Plugin in 5 minutes.
 Run the setup helper in your project directory:
 
 ```bash
-npx opencode-browser init
+npx opencode-browser-v2 init
 ```
 
 This creates or updates `./opencode.json` with the plugin and Browser MCP server entries.
@@ -28,7 +28,7 @@ This creates or updates `./opencode.json` with the plugin and Browser MCP server
 Use the global config instead if you want it available everywhere:
 
 ```bash
-npx opencode-browser init --global
+npx opencode-browser-v2 init --global
 ```
 
 If you prefer to edit the file manually, create or update `opencode.json` like this:
@@ -37,12 +37,13 @@ If you prefer to edit the file manually, create or update `opencode.json` like t
 cat > opencode.json << 'EOF'
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-browser"],
+  "plugins": ["opencode-browser-v2"],
   "mcp": {
-    "browsermcp": {
-      "type": "local",
-      "command": ["npx", "-y", "@browsermcp/mcp@0.1.3"],
-      "enabled": true
+    "servers": {
+      "browsermcp": {
+        "type": "local",
+        "command": ["npx", "-y", "@browsermcp/mcp@0.1.3"]
+      }
     }
   }
 }
@@ -50,8 +51,8 @@ EOF
 ```
 
 **What this does:**
-- `"plugin": ["opencode-browser"]` - Installs the plugin from npm (automatic)
-- `"mcp": { "browsermcp": ... }` - Configures Browser MCP server (required for browser control)
+- `"plugins": ["opencode-browser-v2"]` - Installs the plugin from npm (automatic)
+- `"mcp": { "servers": { "browsermcp": ... } }` - Configures Browser MCP server (required for browser control)
 
 Both are needed! The plugin enhances the MCP tools, but the MCP server does the actual browser automation.
 
@@ -95,7 +96,7 @@ Navigate directly to https://news.ycombinator.com and extract the titles of the 
 
 - [ ] Browser MCP extension is installed and visible in browser toolbar
 - [ ] `opencode.json` contains the MCP configuration
-- [ ] `plugin` includes `opencode-browser`
+- [ ] `plugins` includes `opencode-browser-v2`
 - [ ] OpenCode starts without errors
 - [ ] Browser automation commands work
 

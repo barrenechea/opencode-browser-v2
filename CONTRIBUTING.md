@@ -15,7 +15,7 @@ Thank you for your interest in contributing to this project! This guide will hel
 ### Prerequisites
 
 - Node.js v18 or higher
-- OpenCode installed
+- OpenCode v2 installed (for v1, work from the upstream `opencode-browser` project)
 - Browser MCP extension installed
 - Git
 
@@ -23,20 +23,20 @@ Thank you for your interest in contributing to this project! This guide will hel
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/michaljach/opencode-browser.git
-cd opencode-browser
+git clone https://github.com/barrenechea/opencode-browser-v2.git
+cd opencode-browser-v2
 ```
 
-2. Install dependencies (if you add any):
+2. Install dependencies:
 ```bash
 npm install
 ```
 
 3. Link the plugin locally:
 ```bash
-# For testing
-mkdir -p .opencode/plugin
-ln -s $(pwd)/index.ts .opencode/plugin/browser-mcp.ts
+# For testing. OpenCode v2 discovers local plugins from .opencode/plugins/
+mkdir -p .opencode/plugins
+ln -s $(pwd)/src/index.ts .opencode/plugins/browser-mcp.ts
 ```
 
 4. Create your OpenCode configuration:
@@ -48,19 +48,23 @@ cp opencode.json.example opencode.json
 
 ### Manual Testing
 
-1. Make your changes to `index.ts`
-2. Restart OpenCode
-3. Test with browser automation prompts
-4. Verify the changes work as expected
+1. Make your changes to `src/index.ts`
+2. Run `npm run typecheck`
+3. Restart OpenCode
+4. Test with browser automation prompts
+5. Verify the changes work as expected
 
 ### Test Checklist
 
 Before submitting, ensure:
 
+- [ ] `npm run typecheck` passes
+- [ ] The plugin's `id` and source appear in OpenCode's active plugin list
 - [ ] Plugin loads without errors
 - [ ] Basic browser navigation works
-- [ ] Tool execution hooks function correctly
-- [ ] Session context is preserved
+- [ ] Every registered hook and event subscription is exercised
+- [ ] Session context is preserved across compaction
+- [ ] Reloading or removing the plugin runs cleanup without errors
 - [ ] No console errors or warnings
 - [ ] Documentation is updated
 
@@ -70,6 +74,11 @@ Before submitting, ensure:
 
 - Use TypeScript for all code
 - Enable strict type checking
+- `npm run typecheck` runs TypeScript 7 (the Go-native compiler). Two things changed in
+  TypeScript 6/7 that affect `tsconfig.json`: `rootDir` must be set explicitly whenever `outDir`
+  is set, and the long-deprecated options `charset`, `importsNotUsedAsValues`, `keyofStringsOnly`,
+  `noImplicitUseStrict`, `noStrictGenericChecks`, `out`, `preserveValueImports`,
+  `suppressExcessPropertyErrors` and `suppressImplicitAnyIndexErrors` were removed outright.
 - Add JSDoc comments for public APIs
 - Use meaningful variable names
 - Keep functions small and focused
@@ -77,16 +86,19 @@ Before submitting, ensure:
 ### Example:
 
 ```typescript
-/**
- * Processes browser tool execution results
- * @param input - The tool execution input
- * @param output - The tool execution output
- */
-"tool.execute.after": async (input, output) => {
-  if (input.tool.startsWith("browsermcp_")) {
-    console.log(`Completed: ${input.tool}`)
-  }
-}
+import { Plugin } from "@opencode/plugin"
+
+export default Plugin.define({
+  id: "opencode-browser-v2",
+  async setup(ctx) {
+    // Hooks receive one mutable event; mutate it in place to change behaviour.
+    await ctx.tool.hook("execute.after", (event) => {
+      if (event.tool.startsWith("browsermcp_")) {
+        console.log(`Completed: ${event.tool}`)
+      }
+    })
+  },
+})
 ```
 
 ## Submitting Changes
